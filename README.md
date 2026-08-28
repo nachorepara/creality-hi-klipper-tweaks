@@ -85,8 +85,9 @@ Each patch file shows the exact **before → after** for the relevant section, w
 ## Requirements
 
 - A Creality Hi / F018 printer running Klipper (check via the printer's OTA version — `1.1.0.74` is what this was built and tested against).
-- SSH access to **your own printer** on **your own local network**. Default factory credentials are typically `root` / a printer-specific password shown in Creality's docs for this model — this repo does not publish any IP address or password, because none of that is fixed: your printer's LAN IP depends on your own router/DHCP, and you should treat SSH credentials as sensitive.
-- Basic comfort with SSH and editing text config files. If you're not comfortable doing this yourself, ask someone who is — see the disclaimer below.
+- **Intermediate/advanced comfort** editing text config files. Root/remote access is off by default on this printer — you enable it yourself from the touchscreen (**Settings → Root account information**), which then shows you the SSH username, auto-generated password, and how to find your IP. Full steps in [INSTALL.md](INSTALL.md). This repo does not publish any IP address or password — none of that is fixed, it's generated per-printer and depends on your own LAN.
+- Once enabled, you can apply these changes either over **SSH**, or — if you'd rather avoid the terminal — through the printer's built-in **web file manager** at `http://<your-printer-ip>:4408/#/configure`. Both edit the same files; pick whichever you're comfortable with.
+- If none of the above sounds comfortable, ask someone experienced to help rather than improvising — see the disclaimer below.
 
 See [INSTALL.md](INSTALL.md) for step-by-step instructions, including **how to back up your config before touching anything** (do this — every patch here assumes you did).
 
