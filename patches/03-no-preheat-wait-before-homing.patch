@@ -1,0 +1,52 @@
+# Fix: no more blocking heat-wait before the first homing move
+
+**File:** `gcode_macro.cfg`
+**Section:** add new `[gcode_macro M109]` and `[gcode_macro M190]` overrides
+
+## Why
+
+Before the very first `G28` of a print, the stock print-start flow (driven by the touchscreen's closed-source `display-server` process, not by any editable macro) issues a **blocking** `M109 S140` — Klipper's "wait until the extruder is at *exactly* this temperature" command — before doing anything else. Homing (moving X/Y/Z to their endstops) needs **zero** heat. This wait was pure serialized dead time (~35s observed) sitting in front of a move that doesn't care about temperature at all.
+
+There's no config file or macro to edit here — `M109 S140` is a raw gcode command sent directly, not wrapped in any named macro we can patch at the call site. Instead, we intercept the command itself.
+
+## The fix
+
+Override the built-in `M109` and `M190` gcode commands (the same `rename_existing` pattern this firmware already uses for `M204`, `PAUSE`, `RESUME`, `CANCEL_PRINT`). The override checks `printer.toolhead.homed_axes`: if **nothing is homed yet**, it converts the blocking wait into a non-blocking `M104`/`M140` (sets the target temperature, heating continues in the background, execution continues immediately). Once anything is homed, it falls through to the original behavior — every other temperature wait in the print (nozzle cleaning, bed mesh, actual print temp, filament changes) is completely unaffected.
+
+Add this to `gcode_macro.cfg`, anywhere at the top level (e.g. right after the existing `[gcode_macro M204]` block):
+
+```
+[gcode_macro M109]
+rename_existing: M109.1
+gcode:
+  {% if printer.toolhead.homed_axes == '' %}
+    {action_respond_info("M109 before homing: converted to non-blocking M104")}
+    {% if 'S' in params %}
+      M104 S{params.S}
+    {% endif %}
+  {% else %}
+    M109.1 {rawparams}
+  {% endif %}
+
+[gcode_macro M190]
+rename_existing: M190.1
+gcode:
+  {% if printer.toolhead.homed_axes == '' %}
+    {action_respond_info("M190 before homing: converted to non-blocking M140")}
+    {% if 'S' in params %}
+      M140 S{params.S}
+    {% endif %}
+  {% else %}
+    M190.1 {rawparams}
+  {% endif %}
+```
+
+## Result observed
+
+- `M109 S140` before first homing: ~35s (blocking) → ~0.01s (non-blocking)
+- First `G28` duration: unchanged (~51-52s, as expected — homing doesn't get faster, it just no longer waits *before* it needs to)
+- By the time homing finishes, the nozzle has already reached temperature via background heating in every test performed — no delay pushed downstream
+
+## ⚠️ Important caveat before applying
+
+This override affects **every** `M109`/`M190` call system-wide, gated only by "has anything been homed yet." In this firmware's flow, the only pre-homing temperature waits observed were the generic `M109 S140` warm-up — but if your printer's flow (or a future firmware update) issues a *meaningful* pre-homing wait for some other reason, this would silently convert it to non-blocking too. Test carefully after applying, and check `klippy.log` for the `action_respond_info` messages this override logs, so you can confirm exactly when it's triggering.

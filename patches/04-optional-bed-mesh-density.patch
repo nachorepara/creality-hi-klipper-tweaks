@@ -1,0 +1,32 @@
+# Optional: fewer bed mesh probe points
+
+**File:** `printer.cfg`
+**Section:** `[bed_mesh]`
+
+## Why
+
+`BED_MESH_CALIBRATE` time scales with `probe_count` — a denser grid takes longer to probe every print. A very dense grid (e.g. `9,9` = 81 points) is more accurate for a bed with complex warping, but overkill for most beds, especially ones already reasonably flat or corrected by mechanical Z-tilt adjustment (`[z_tilt]`).
+
+This is **not a bug fix** — it's a dial. Reducing it trades some mesh resolution for calibration speed. Only do this if you're comfortable checking the resulting print quality (especially first-layer adhesion across the full bed) yourself.
+
+## Example
+
+```diff
+ [bed_mesh]
+ speed: 300
+ mesh_min: 10,10
+ mesh_max: 250,250
+-probe_count: 9,9
++probe_count: 5,5
+ fade_start: 5.0
+ fade_end: 50.0
+ algorithm: bicubic
+```
+
+## Result observed
+
+`BED_MESH_CALIBRATE` time dropped noticeably (roughly proportional to the reduction in probe points). First-layer quality across the bed remained acceptable on the tested unit, but this is bed-dependent — check yours.
+
+## Recommendation
+
+Start with a moderate reduction (e.g. `9,9 → 7,7` or `5,5`) rather than jumping straight to the minimum. If you notice first-layer issues in areas between probe points, increase it back up.

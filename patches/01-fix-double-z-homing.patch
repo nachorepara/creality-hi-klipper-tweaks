@@ -1,0 +1,58 @@
+# Fix: double full Z-homing → single homing
+
+**File:** `sensorless.cfg`
+**Section:** `[gcode_macro _HOME_Z]`
+
+## Why
+
+`[homing_override]` in this firmware replaces Klipper's native `G28` with custom macros (`_HOME_X`, `_HOME_Y`, `_HOME_Z`). Every `G28 Z` — no matter who calls it (the touchscreen, an app, or the sliced `.gcode` file) — runs through `_HOME_Z`, which unconditionally triggers `ZDOWN`: a slow mechanical dual-motor optical-sensor sync (~50s).
+
+Stock print-start flow calls `G28 Z` **twice**: once during initial XY/Z clearance homing, and again right before bed mesh calibration — paying the full ~50s ZDOWN sync both times, even though nothing could have desynced the axis in between.
+
+## The fix
+
+Add a session flag (`xyz_ready.z_ready`, defined as a `variable_z_ready` in `[gcode_macro xyz_ready]`) that gets set to `1` the first time ZDOWN runs successfully in a print-prep sequence. Any subsequent `G28 Z` in that same sequence checks the flag and skips the mechanical re-sync (`ZDOWN_SWITCH ENABLE=0`), falling back to a fast probe-only home instead.
+
+> The flag resets to 0 after every completed/cancelled print — Klipper's `M84` (stepper disable) triggers `cartesian.py`'s `_motor_off`, which un-homes all axes. This means the saving applies **per print-prep sequence**, not cumulatively across separate prints. That's expected.
+
+## Before
+
+```
+[gcode_macro _HOME_Z]
+gcode:
+  ...
+  G1 x130 y130 F12000
+  SET_KINEMATIC_POSITION Z=305
+  G1 Z304 F1200
+  M400
+  G28 Z
+  G1 Z10 F300
+  ...
+```
+
+## After
+
+```
+[gcode_macro _HOME_Z]
+gcode:
+  ...
+  G1 x130 y130 F12000
+  SET_KINEMATIC_POSITION Z=305
+  G1 Z304 F1200
+  M400
+  {% if printer['gcode_macro xyz_ready'].z_ready|int == 1 %}
+    {action_respond_info("Z already synced this session, skipping ZDOWN")}
+    ZDOWN_SWITCH ENABLE=0
+  {% else %}
+    ZDOWN_SWITCH ENABLE=1
+  {% endif %}
+  G28 Z
+  G1 Z10 F300
+  ...
+```
+
+`[gcode_macro xyz_ready]` should already exist in `sensorless.cfg` with a `variable_z_ready: 0` (and similar variables for x/y). If your firmware's version doesn't have it, you'll need to add the variable declaration too — check the existing `[gcode_macro xyz_ready]` block in your file first.
+
+## Result observed
+
+Second `G28 Z` in a print-prep sequence dropped from ~57–61s (full ZDOWN) to ~17–23s (probe-only home).

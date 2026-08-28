@@ -1,0 +1,38 @@
+# Fix: faster nozzle cleaning, same result
+
+**File:** `printer.cfg`
+**Section:** `[nozzle_clear]`
+
+## Why
+
+The stock nozzle-cleaning routine (`nozzle_clear.py`, invoked as `NOZ_CLEAR`) does several silicone-brush wipe passes plus `touch_cnt` probe touches against a rear metal plate (each `touch_cnt` unit is actually ~3 internal sub-touches, so `touch_cnt: 3` means ~9 physical touches). It finishes by waiting for the nozzle to passively cool down to a "closure" temperature (120°C by default, not explicitly set in stock config) before considering the tip sealed against oozing.
+
+Both of these are more conservative than necessary: fewer touches still clean effectively, and you don't need to cool all the way to 120°C to stop oozing.
+
+## The fix
+
+```diff
+ [nozzle_clear]
+ clear_temp:170
++closure_temp:160
+ enable_clear:true
+ start_pos: 98, 266
+-touch_cnt: 3
++touch_cnt: 1
+ clear_start: 148, 266
+ probe_pos_diff: 0, 0
+ clear_lenght: 14, 2
+```
+
+Leave `clear_cnt` (silicone brush wipe passes) untouched — the brush wipe itself isn't the slow part, the probe touches and the cooldown wait are.
+
+## Result observed
+
+- Touches against the metal plate: ~9 → ~3
+- Total `NOZ_CLEAR` time: ~168s → ~102s
+- No oozing or cleaning-quality regression observed across multiple test prints
+
+## Tuning notes
+
+- If you print materials more prone to oozing (e.g. some flexibles), you may want to keep `closure_temp` closer to stock (120) or find a middle ground (140).
+- `touch_cnt: 1` worked fine in testing; if your nozzle tends to still have residue, try `touch_cnt: 2` before reverting fully to stock.
